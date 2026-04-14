@@ -1,111 +1,136 @@
 # Geography Ninja — Setup & Deployment Guide
 
 ## Stack
-- **Frontend**: React (Vite) → deploy to Vercel or Netlify (free)
-- **Backend**: FastAPI → deploy to Railway ($5/mo) or Render (free tier)
-- **Database**: Supabase (free tier — 500MB, plenty for MVP)
+
+- **Frontend**: React 19 + Vite (in `geoninja/`) → deploy to Vercel
+- **Backend**: FastAPI (`main.py` at repo root) → deploy to Railway
+- **External APIs**: Anthropic (question generation) and Resend (streak-reminder emails)
+
+The backend is a stateless proxy — there is no database. Streak state lives
+in the browser via `localStorage`. The backend exists only to (a) hide the
+Anthropic API key from the browser and (b) send streak-reminder emails.
 
 ---
 
-## 1. Supabase Setup (10 min)
+## Repository layout
 
-1. Go to https://supabase.com → create a new project
-2. In the SQL Editor, paste and run `schema.sql`
-3. Go to Settings → API → copy:
-   - `Project URL` → this is your `SUPABASE_URL`
-   - `anon public key` → this is your `SUPABASE_ANON_KEY`
+```
+/
+├── main.py              FastAPI backend (Railway)
+├── requirements.txt     Python deps
+├── geoninja/            Vite React app (Vercel)
+│   ├── index.html
+│   ├── package.json
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   ├── icons.svg
+│   │   ├── manifest.json
+│   │   └── sw.js
+│   └── src/
+│       ├── App.jsx
+│       ├── facts.js
+│       └── ...
+├── ROADMAP.md           Next-phase plan (Stripe, teacher market, etc.)
+├── SETUP.md             This file
+└── docs/archive/        Historical drafts (kept for reference)
+```
 
 ---
 
-## 2. Backend Setup
+## 1. Backend (FastAPI on Railway)
 
-### Install dependencies
-```bash
-pip install fastapi uvicorn supabase python-dotenv pydantic[email]
-```
+### Environment variables (Railway dashboard)
 
-### Create `.env` file
-```
-SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_ANON_KEY=your-anon-key-here
-```
+| Var | Required | Notes |
+|-----|----------|-------|
+| `ANTHROPIC_API_KEY` | yes | Used by `/api/questions` |
+| `RESEND_API_KEY`    | no  | If unset, `/api/email` returns ok but sends nothing |
+| `RESEND_FROM`       | no  | e.g. `noreply@geographyninja.com` |
+| `ALLOWED_ORIGIN`    | yes | e.g. `https://geographyninja.com`; default is `*` |
 
 ### Run locally
+
 ```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=sk-ant-...
 uvicorn main:app --reload --port 8000
+# curl http://localhost:8000/health
 ```
 
+### Endpoints
+
+- `GET /health` — status + which integrations are configured
+- `POST /api/questions` — body `{"type": "capital" | "continent" | "flag"}`; returns 10 AI-generated questions
+- `POST /api/email` — body `{"email": "...", "streak": 3}`; sends a streak-reminder email via Resend
+
 ### Deploy to Railway
-1. `railway login` → `railway init` → `railway up`
-2. Set env vars in Railway dashboard
-3. Your API will be live at `https://your-app.railway.app`
+
+```bash
+railway login
+railway link       # link to the existing project
+railway up
+```
+
+Set the env vars above in the Railway dashboard. The existing project URL
+(`web-production-6a34e.up.railway.app`) can continue to serve the new
+backend — older endpoints (`/scores`, `/register-email`, `/streaks/...`,
+`/leaderboard/...`) are gone; the Vite frontend no longer calls them.
 
 ---
 
-## 3. Frontend Setup
+## 2. Frontend (Vite on Vercel)
 
-### Install and run
+### Environment variables (Vercel dashboard, or `.env.local`)
+
+| Var | Notes |
+|-----|-------|
+| `VITE_API_URL` | URL of the deployed FastAPI backend. Defaults to the existing Railway URL if unset. |
+
+### Run locally
+
 ```bash
-npm create vite@latest geoninja -- --template react
 cd geoninja
 npm install
-# Replace src/App.jsx with GeographyNinja.jsx content
 npm run dev
 ```
 
-### Connect to backend (optional for MVP)
-In `GeographyNinja.jsx`, the MVP uses **localStorage only** — no backend needed to launch.
+### Build
 
-To connect backend later, add this to `handleComplete`:
-```js
-const API = "https://your-api.railway.app";
-
-fetch(`${API}/scores`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    user_id: getUserId(),   // UUID from localStorage
-    score: score,
-    game_date: new Date().toISOString().split("T")[0],
-  })
-});
-```
-
-### Deploy frontend to Vercel
 ```bash
-npm run build
-npx vercel --prod
+npm run build      # outputs to geoninja/dist/
+npm run preview    # serves the built app locally
 ```
-Then add your custom domain `geographyninja.com` in Vercel dashboard.
+
+### Deploy to Vercel
+
+Root directory: `geoninja/`. Build command: `npm run build`. Output
+directory: `dist`. Set `VITE_API_URL` in the Vercel project settings.
+
+### PWA icons (one-time)
+
+The manifest references `/icons/icon-192.png` and `/icons/icon-512.png`.
+Generate them (e.g. via favicon.io from the 🥷 emoji) and drop them into
+`geoninja/public/icons/`. Until they exist, the PWA install prompt will
+not appear on mobile but the app still runs normally.
 
 ---
 
-## 4. Domain Setup
+## 3. Domain
 
-Point `geographyninja.com` to Vercel:
-- Add A record: `76.76.21.21`
-- Add CNAME: `www` → `cname.vercel-dns.com`
-
----
-
-## Launch Checklist
-
-- [ ] Supabase project created + schema.sql run
-- [ ] Frontend deployed to Vercel
-- [ ] Domain pointed to Vercel
-- [ ] Test on mobile (iPhone + Android)
-- [ ] Post to r/geography and r/trivia
-- [ ] Record 30s TikTok of gameplay
+Point `geographyninja.com` at Vercel:
+- A record: `76.76.21.21`
+- CNAME `www` → `cname.vercel-dns.com`
 
 ---
 
-## Phase 2 (after first 50 users)
-- Add username prompt after first game
-- POST scores to backend
-- Show real leaderboard
-- Add email capture after day 3 streak
+## Launch checklist
 
-## Phase 3 (after daily retention confirmed)
-- Add Stripe ($4.99/mo)
-- Unlock: hard mode, full stats, leaderboard ranking
-- Add 50 more questions
+- [ ] Railway has `ANTHROPIC_API_KEY` + `ALLOWED_ORIGIN` set; `/health` returns `ai: true`
+- [ ] Resend account created; `RESEND_API_KEY` + `RESEND_FROM` set
+- [ ] Vercel project points at `geoninja/`, `VITE_API_URL` set
+- [ ] PWA icons generated and placed in `geoninja/public/icons/`
+- [ ] Mobile test on iOS + Android
+- [ ] Install prompt appears after a few visits
+
+See `ROADMAP.md` for what comes next (Stripe paywall, question-bank
+expansion, teacher-market push).
