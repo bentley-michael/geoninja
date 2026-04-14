@@ -1,0 +1,19 @@
+{
+  "name": "Geography Ninja",
+  "short_name": "GeoNinja",
+  "description": "Master the world. One question at a time.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["games", "education"],
+  "screenshots": [
+    { "src": "/screenshots/home.png", "sizes": "390x844", "type": "image/png", "label": "Daily challenge home screen" },
+    { "src": "/screenshots/quiz.png",  "sizes": "390x844", "type": "image/png", "label": "Quiz in progress" }
+  ]
+}
