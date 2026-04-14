@@ -1,154 +1,128 @@
-# Geography Ninja — FastAPI Backend
-# Deploy on Railway or any VPS. Uses Supabase (Postgres) for persistence.
-#
-# pip install fastapi uvicorn supabase python-dotenv pydantic
+"""
+Geography Ninja — FastAPI Backend
+Deploy to Railway (same project you already have at web-production-6a34e.up.railway.app)
 
-from fastapi import FastAPI, HTTPException, Depends
+ENV VARS needed in Railway:
+  ANTHROPIC_API_KEY   — your Anthropic key (moves it off the client)
+  RESEND_API_KEY      — free tier handles 3k emails/mo (resend.com)
+  RESEND_FROM         — e.g. "noreply@geographyninja.com"
+  ALLOWED_ORIGIN      — e.g. "https://geoninja.vercel.app"
+"""
+
+import os, json, httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from datetime import date, datetime, timedelta
-import os
-from dotenv import load_dotenv
-from supabase import create_client, Client
 
-load_dotenv()
+app = FastAPI()
 
-app = FastAPI(title="Geography Ninja API", version="1.0.0")
-
+ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://geographyninja.com", "http://localhost:3000", "http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[ALLOWED_ORIGIN],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
-# ─── Supabase ─────────────────────────────────────────────────────────────────
-supabase: Client = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_ANON_KEY"],
-)
+ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+RESEND_KEY    = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM   = os.getenv("RESEND_FROM", "noreply@geographyninja.com")
 
-# ─── Models ───────────────────────────────────────────────────────────────────
-class SaveScoreRequest(BaseModel):
-    user_id: str           # anonymous UUID from localStorage
-    username: Optional[str] = "Ninja"
-    score: int             # 0–5
-    total: int = 5
-    game_date: str         # YYYY-MM-DD
+# ── AI Question Proxy ─────────────────────────────────────────────────────────
 
-class RegisterEmailRequest(BaseModel):
-    user_id: str
+class QuizRequest(BaseModel):
+    type: str  # "capital" | "continent" | "flag"
+
+PROMPTS = {
+    "capital": "Generate 10 multiple choice geography questions about world capitals. Mix easy, medium and hard difficulty. Include some obscure capitals. Use countries from all continents.",
+    "continent": "Generate 10 multiple choice geography questions asking which continent a country belongs to. Include both well-known and obscure countries. Mix difficulty.",
+    "flag": "Generate 10 multiple choice geography questions about country flags. Describe the flag briefly in the question (colors, symbols) instead of showing an image. Mix easy and hard.",
+}
+
+SYSTEM = """You are a geography quiz generator. Return ONLY a JSON array of exactly 10 questions.
+Each object must follow this exact schema:
+{"id":1,"type":"<type>","question":"...","options":["A","B","C","D"],"answer":"correct answer","emoji":"relevant emoji"}
+The answer MUST be one of the 4 options exactly. No markdown, no backticks, no explanation — just the raw JSON array."""
+
+@app.post("/api/questions")
+async def generate_questions(req: QuizRequest):
+    if req.type not in PROMPTS:
+        raise HTTPException(400, "Invalid type")
+    if not ANTHROPIC_KEY:
+        raise HTTPException(503, "AI not configured")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 2000,
+                "system": SYSTEM.replace("<type>", req.type),
+                "messages": [{"role": "user", "content": PROMPTS[req.type]}],
+            },
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(502, "AI service error")
+
+    data = resp.json()
+    raw  = data.get("content", [{}])[0].get("text", "[]")
+    raw  = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+
+    try:
+        questions = json.loads(raw)
+    except Exception:
+        raise HTTPException(502, "Could not parse AI response")
+
+    return {"questions": questions}
+
+
+# ── Email Capture / Streak Reminder ──────────────────────────────────────────
+
+class EmailRequest(BaseModel):
     email: EmailStr
+    streak: int = 1
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+@app.post("/api/email")
+async def save_email(req: EmailRequest):
+    if not RESEND_KEY:
+        # Silently succeed if Resend not configured yet
+        return {"ok": True, "note": "email service not configured"}
 
-@app.get("/")
-def root():
-    return {"status": "ok", "service": "Geography Ninja API"}
+    # Send welcome / confirmation email via Resend
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_KEY}", "Content-Type": "application/json"},
+            json={
+                "from": RESEND_FROM,
+                "to": [req.email],
+                "subject": "🥷 Geography Ninja streak reminder set!",
+                "html": f"""
+                <div style="font-family:system-ui;max-width:480px;margin:auto;padding:32px 24px;background:#0a0e1a;color:#f1f5f9;border-radius:16px">
+                  <div style="font-size:48px;text-align:center;margin-bottom:16px">🥷</div>
+                  <h2 style="color:#6366f1;text-align:center;margin:0 0 8px">Geography Ninja</h2>
+                  <p style="color:#94a3b8;text-align:center;margin:0 0 24px">You're on a <strong style="color:#fbbf24">{req.streak}-day streak</strong>. Let's keep it going.</p>
+                  <p style="color:#64748b;font-size:13px;text-align:center">We'll remind you each day to protect your streak.</p>
+                  <div style="text-align:center;margin-top:24px">
+                    <a href="https://geographyninja.com" style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700">Play today's challenge →</a>
+                  </div>
+                </div>
+                """,
+            },
+        )
 
+    return {"ok": True}
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "time": datetime.utcnow().isoformat()}
-
-
-# Save a game result + update streak
-@app.post("/scores")
-def save_score(req: SaveScoreRequest):
-    today = req.game_date
-
-    # Upsert into game_results table
-    result = supabase.table("game_results").upsert({
-        "user_id": req.user_id,
-        "game_date": today,
-        "score": req.score,
-        "total": req.total,
-        "username": req.username,
-    }, on_conflict="user_id,game_date").execute()
-
-    # Fetch or create user streak record
-    streak_row = supabase.table("user_streaks").select("*").eq("user_id", req.user_id).execute()
-
-    yesterday = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    if streak_row.data:
-        row = streak_row.data[0]
-        last = row.get("last_played")
-        current_streak = row.get("streak", 0)
-
-        if last == yesterday:
-            new_streak = current_streak + 1
-        elif last == today:
-            new_streak = current_streak  # already played today
-        else:
-            new_streak = 1
-
-        best = max(row.get("best_streak", 0), new_streak)
-        total_games = row.get("total_games", 0) + (0 if last == today else 1)
-        total_correct = row.get("total_correct", 0) + (0 if last == today else req.score)
-
-        supabase.table("user_streaks").update({
-            "streak": new_streak,
-            "best_streak": best,
-            "last_played": today,
-            "total_games": total_games,
-            "total_correct": total_correct,
-        }).eq("user_id", req.user_id).execute()
-
-        return {"streak": new_streak, "best_streak": best, "total_games": total_games, "total_correct": total_correct}
-    else:
-        supabase.table("user_streaks").insert({
-            "user_id": req.user_id,
-            "streak": 1,
-            "best_streak": 1,
-            "last_played": today,
-            "total_games": 1,
-            "total_correct": req.score,
-            "username": req.username,
-        }).execute()
-        return {"streak": 1, "best_streak": 1, "total_games": 1, "total_correct": req.score}
-
-
-# Get streak info for a user
-@app.get("/streaks/{user_id}")
-def get_streak(user_id: str):
-    row = supabase.table("user_streaks").select("*").eq("user_id", req.user_id).execute()
-    if not row.data:
-        return {"streak": 0, "best_streak": 0, "total_games": 0, "total_correct": 0}
-    return row.data[0]
-
-
-# Daily leaderboard
-@app.get("/leaderboard/daily")
-def daily_leaderboard():
-    today = date.today().isoformat()
-    result = supabase.table("game_results") \
-        .select("username, score, user_id") \
-        .eq("game_date", today) \
-        .order("score", desc=True) \
-        .limit(20) \
-        .execute()
-    return {"date": today, "leaderboard": result.data}
-
-
-# All-time leaderboard by best_streak
-@app.get("/leaderboard/alltime")
-def alltime_leaderboard():
-    result = supabase.table("user_streaks") \
-        .select("username, best_streak, total_correct, total_games") \
-        .order("best_streak", desc=True) \
-        .limit(20) \
-        .execute()
-    return {"leaderboard": result.data}
-
-
-# Register email to save streak (soft auth)
-@app.post("/register-email")
-def register_email(req: RegisterEmailRequest):
-    supabase.table("user_streaks") \
-        .update({"email": req.email}) \
-        .eq("user_id", req.user_id) \
-        .execute()
-    return {"status": "ok", "message": "Email saved. We'll remind you to keep your streak!"}
+    return {"status": "ok", "ai": bool(ANTHROPIC_KEY), "email": bool(RESEND_KEY)}
