@@ -235,8 +235,13 @@ function HomeScreen({ onStart, onPractice, streakData }) {
     <div style={styles.screen}>
       <div style={styles.homeContent}>
         <div style={styles.logoWrap}>
-          <div style={styles.ninjaIcon}>🥷</div>
-          <h1 style={styles.logoText}>Geography <span style={styles.logoAccent}>Ninja</span></h1>
+          <h1 style={styles.logoHeading}>
+            <img
+              src="/geography-ninja-logo.png"
+              alt="Geography Ninja"
+              style={styles.logoImage}
+            />
+          </h1>
           <p style={styles.tagline}>Master the world. One question at a time.</p>
         </div>
 
@@ -610,9 +615,8 @@ const styles = {
   screen:{ width:"100%", maxWidth:420, minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 20px", boxSizing:"border-box", position:"relative", zIndex:1 },
   homeContent:{ width:"100%", display:"flex", flexDirection:"column", gap:16 },
   logoWrap:{ textAlign:"center", marginBottom:4 },
-  ninjaIcon:{ fontSize:56, marginBottom:8, display:"block", filter:"drop-shadow(0 0 20px rgba(99,102,241,.5))" },
-  logoText:{ fontSize:32, fontWeight:800, color:"#f1f5f9", margin:0, letterSpacing:"-0.5px" },
-  logoAccent:{ color:"#6366f1", marginLeft:6 },
+  logoHeading:{ margin:0 },
+  logoImage:{ width:"min(100%, 320px)", height:"auto", display:"block", margin:"0 auto 12px", filter:"drop-shadow(0 12px 24px rgba(0,0,0,.35))" },
   tagline:{ color:"#64748b", fontSize:14, margin:"8px 0 0", letterSpacing:"0.3px" },
   streakBadge:{ display:"flex", alignItems:"center", gap:12, background:"rgba(251,191,36,.1)", border:"1px solid rgba(251,191,36,.25)", borderRadius:14, padding:"14px 18px" },
   fireEmoji:{ fontSize:28 },
