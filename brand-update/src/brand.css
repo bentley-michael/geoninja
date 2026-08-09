@@ -1,0 +1,92 @@
+:root {
+  --gn-navy: #073552;
+  --gn-navy-deep: #05263d;
+  --gn-blue: #075985;
+  --gn-green: #78b82a;
+  --gn-green-dark: #5e941d;
+  --gn-cream: #fbfaf5;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--gn-navy-deep);
+}
+
+.brand-shell {
+  min-height: 100vh;
+  background: var(--gn-navy-deep);
+}
+
+.brand-header {
+  height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 8px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--gn-cream) 100%);
+  border-bottom: 4px solid var(--gn-green);
+  position: relative;
+  z-index: 5;
+}
+
+.brand-logo {
+  width: 94px;
+  height: 94px;
+  object-fit: contain;
+  display: block;
+}
+
+.brand-app > div {
+  min-height: calc(100vh - 112px) !important;
+  background: var(--gn-navy-deep) !important;
+}
+
+.brand-app > div > div:first-child {
+  background:
+    radial-gradient(ellipse at 18% 18%, rgba(120, 184, 42, .22) 0%, transparent 48%),
+    radial-gradient(ellipse at 82% 78%, rgba(7, 89, 133, .28) 0%, transparent 52%) !important;
+}
+
+/* Replace the old purple CTA family with Geography Ninja green. */
+.brand-app button[style*="linear-gradient"] {
+  background: linear-gradient(135deg, var(--gn-green), var(--gn-green-dark)) !important;
+  box-shadow: 0 4px 22px rgba(120, 184, 42, .30) !important;
+}
+
+/* Browser-normalized and source-form variants of the former #6366f1 accent. */
+.brand-app [style*="#6366f1"],
+.brand-app [style*="rgb(99, 102, 241)"] {
+  border-color: var(--gn-green) !important;
+}
+
+.brand-app div[style*="color: rgb(99, 102, 241)"],
+.brand-app span[style*="color: rgb(99, 102, 241)"],
+.brand-app div[style*="color:#6366f1"],
+.brand-app span[style*="color:#6366f1"] {
+  color: var(--gn-green) !important;
+}
+
+/* Progress bars and highlighted circular score elements. */
+.brand-app [style*="linear-gradient(90deg"] {
+  background: linear-gradient(90deg, var(--gn-green), #2d8aa8) !important;
+}
+
+@media (max-width: 600px) {
+  .brand-header {
+    height: 92px;
+    padding: 6px 12px;
+  }
+
+  .brand-logo {
+    width: 78px;
+    height: 78px;
+  }
+
+  .brand-app > div {
+    min-height: calc(100vh - 92px) !important;
+  }
+}
